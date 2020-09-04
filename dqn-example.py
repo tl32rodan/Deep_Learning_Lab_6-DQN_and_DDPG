@@ -37,13 +37,17 @@ class ReplayMemory:
 class Net(nn.Module):
     def __init__(self, state_dim=8, action_dim=4, hidden_dim=32):
         super().__init__()
-        ## TODO ##
-        raise NotImplementedError
+
+        self.model = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim)
+        )
 
     def forward(self, x):
-        ## TODO ##
-        raise NotImplementedError
-
+        return self.model(x)
 
 class DQN:
     def __init__(self, args):
@@ -51,9 +55,7 @@ class DQN:
         self._target_net = Net().to(args.device)
         # initialize target network
         self._target_net.load_state_dict(self._behavior_net.state_dict())
-        ## TODO ##
-        # self._optimizer = ?
-        raise NotImplementedError
+        self._optimizer = torch.optim.Adam(self._behavior_net.parameters(), lr=args.lr)
         # memory
         self._memory = ReplayMemory(capacity=args.capacity)
 
@@ -66,8 +68,11 @@ class DQN:
 
     def select_action(self, state, epsilon, action_space):
         '''epsilon-greedy based on behavior network'''
-         ## TODO ##
-        raise NotImplementedError
+        if random.random() > epsilon:
+            with torch.no_grad():
+                return self._behavior_net(state).max()
+        else:
+            return random.choice(action_space)
 
     def append(self, state, action, reward, next_state, done):
         self._memory.append(state, [action], [reward / 10], next_state,
