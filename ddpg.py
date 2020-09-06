@@ -105,12 +105,12 @@ class DDPG:
 
     def select_action(self, state, noise=True):
         '''based on the behavior (actor) network and exploration noise'''
-        a = self._actor_net(state)
+        a = self._actor_net(torch.tensor(state).to(self.device))
 
         if noise: # A noise process to avoid choosing same action
-            a += self_action_noise.sample()
+            a += torch.tensor(self._action_noise.sample()).to(self.device)
         
-        return a
+        return a.cpu().detach().numpy()
 
     def append(self, state, action, reward, next_state, done):
         self._memory.append(state, action, [reward / 100], next_state,
@@ -133,9 +133,10 @@ class DDPG:
         state, action, reward, next_state, done = self._memory.sample(
             self.batch_size, self.device)
 
-        done = done.T.view(-1)
-        reward = reward.T.view(-1)
-        action = action.T.view(-1)
+        #done = done.T.view(-1)
+        #reward = reward.T.view(-1)
+        #print('action.size(),',action.size())
+        #action = action.T.view(-1)
 
         ## update critic ##
         # critic loss
@@ -167,7 +168,7 @@ class DDPG:
     def _update_target_network(target_net, net, tau):
         '''update target network by _soft_ copying from behavior network'''
         for target, behavior in zip(target_net.parameters(), net.parameters()):
-            target.data.copy_(tau*target.dat + (1-tau)*behavior.data)
+            target.data.copy_(tau*behavior.data + (1-tau)*target.data)
 
 
     def save(self, model_path, checkpoint=False):
