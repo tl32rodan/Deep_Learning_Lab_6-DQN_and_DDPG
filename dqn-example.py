@@ -151,7 +151,7 @@ def train(args, env, agent, writer):
     ewma_reward = 0
 
     # Learning rate scheduler
-    #lr_sch = torch.optim.lr_scheduler.ReduceLROnPlateau(agent._optimizer, mode='max', patience=20, factor=0.95, verbose=True)
+    lr_sch = torch.optim.lr_scheduler.ReduceLROnPlateau(agent._optimizer, mode='max', patience=50, factor=0.75, verbose=True)
 
     for episode in range(args.episode):
         total_reward = 0
@@ -178,9 +178,9 @@ def train(args, env, agent, writer):
             if done:
                 ewma_reward = 0.05 * total_reward + (1 - 0.05) * ewma_reward
                 
-                #if total_steps >= args.warmup:
+                if total_steps >= args.warmup*3:
                     # Tuning learning rate
-                    #lr_sch.step(ewma_reward)
+                    lr_sch.step(ewma_reward)
                 
                 writer.add_scalar('Train/Episode Reward', total_reward,
                                   total_steps)
@@ -235,7 +235,7 @@ def main():
     parser.add_argument('--episode', default=1200, type=int)
     parser.add_argument('--capacity', default=10000, type=int)
     parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--lr', default=.0005, type=float)
+    parser.add_argument('--lr', default=.005, type=float)
     parser.add_argument('--eps_decay', default=.995, type=float)
     parser.add_argument('--eps_min', default=.01, type=float)
     parser.add_argument('--gamma', default=.99, type=float)
