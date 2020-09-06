@@ -80,8 +80,8 @@ class DQN:
             return action
 
     def append(self, state, action, reward, next_state, done):
-        #self._memory.append(state, [action], [reward / 10], next_state,
-        self._memory.append(state, [action], [reward], next_state,
+        #self._memory.append(state, [action], [reward], next_state,
+        self._memory.append(state, [action], [reward / 10], next_state,
                             [int(done)])
 
     def update(self, total_steps):
