@@ -70,9 +70,9 @@ class DQN:
         '''epsilon-greedy based on behavior network'''
         if random.random() > epsilon:
             with torch.no_grad():
-                return self._behavior_net(state).max()
+                return int(torch.argmax(self._behavior_net(torch.tensor(state).to(self.device))))
         else:
-            return random.choice(action_space)
+            return action_space.sample()
 
     def append(self, state, action, reward, next_state, done):
         self._memory.append(state, [action], [reward / 10], next_state,
@@ -89,14 +89,12 @@ class DQN:
         state, action, reward, next_state, done = self._memory.sample(
             self.batch_size, self.device)
 
-        ## TODO ##
-        # q_value = ?
-        # with torch.no_grad():
-        #    q_next = ?
-        #    q_target = ?
-        # criterion = ?
-        # loss = criterion(q_value, q_target)
-        raise NotImplementedError
+        q_value = self._behavior_net(state)
+        with torch.no_grad():
+            q_next = self._target_net(next_state)
+            q_target = reward + gamma*q_next*(1-done)
+        criterion = nn.MSELoss()
+        loss = criterion(q_value, q_target)
         # optimize
         self._optimizer.zero_grad()
         loss.backward()
@@ -105,8 +103,7 @@ class DQN:
 
     def _update_target_network(self):
         '''update target network by copying from behavior network'''
-        ## TODO ##
-        raise NotImplementedError
+        self._target_net = self._behavior_net
 
     def save(self, model_path, checkpoint=False):
         if checkpoint:
@@ -142,8 +139,8 @@ def train(args, env, agent, writer):
             if total_steps < args.warmup:
                 action = action_space.sample()
             else:
-                action = agent.select_action(state, epsilon, action_space)
-                epsilon = max(epsilon * args.eps_decay, args.eps_min)
+                action = agent.select_action(state, epsilon, action_space) # epsilon-greedy updating
+                epsilon = max(epsilon * args.eps_decay, args.eps_min) # renew epsilon
             # execute action
             next_state, reward, done, _ = env.step(action)
             # store transition
@@ -178,12 +175,22 @@ def test(args, env, agent, writer):
         total_reward = 0
         env.seed(seed)
         state = env.reset()
-        ## TODO ##
-        # ...
-        #     if done:
-        #         writer.add_scalar('Test/Episode Reward', total_reward, n_episode)
-        #         ...
-        raise NotImplementedError
+        for t in itertools.count(start=1):
+            action = agent.select_action(state, epsilon, action_space) # epsilon-greedy updating
+            epsilon = max(epsilon * args.eps_decay, args.eps_min) # renew epsilon
+            # execute action
+            next_state, reward, done, _ = env.step(action)
+            # store transition
+            agent.append(state, action, reward, next_state, done)
+
+            state = next_state
+            total_reward += reward
+
+            if done:
+                writer.add_scalar('Test/Episode Reward', total_reward, n_episode)
+                rewards.append(total_reward)
+                break
+
     print('Average Reward', np.mean(rewards))
     env.close()
 
@@ -195,15 +202,15 @@ def main():
     parser.add_argument('-m', '--model', default='dqn.pth')
     parser.add_argument('--logdir', default='log/dqn')
     # train
-    parser.add_argument('--warmup', default=10000, type=int)
-    parser.add_argument('--episode', default=1200, type=int)
+    parser.add_argument('--warmup', default=20000, type=int)
+    parser.add_argument('--episode', default=12000, type=int)
     parser.add_argument('--capacity', default=10000, type=int)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--lr', default=.0005, type=float)
     parser.add_argument('--eps_decay', default=.995, type=float)
     parser.add_argument('--eps_min', default=.01, type=float)
     parser.add_argument('--gamma', default=.99, type=float)
-    parser.add_argument('--freq', default=4, type=int)
+    parser.add_argument('--freq', default=10, type=int)
     parser.add_argument('--target_freq', default=1000, type=int)
     # test
     parser.add_argument('--test_only', action='store_true')
