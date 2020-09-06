@@ -70,12 +70,18 @@ class DQN:
         '''epsilon-greedy based on behavior network'''
         if random.random() > epsilon:
             with torch.no_grad():
-                return int(torch.argmax(self._behavior_net(torch.tensor(state).to(self.device))))
+                action = int(torch.argmax(self._behavior_net(torch.tensor(state).to(self.device))))
+                #print('action=', action)
+                return action
         else:
-            return action_space.sample()
+            action = action_space.sample()
+            #print('action=', action)
+
+            return action
 
     def append(self, state, action, reward, next_state, done):
-        self._memory.append(state, [action], [reward / 10], next_state,
+        #self._memory.append(state, [action], [reward / 10], next_state,
+        self._memory.append(state, [action], [reward], next_state,
                             [int(done)])
 
     def update(self, total_steps):
@@ -88,11 +94,23 @@ class DQN:
         # sample a minibatch of transitions
         state, action, reward, next_state, done = self._memory.sample(
             self.batch_size, self.device)
-
+    
+        done = done.T.view(-1)
+        reward = reward.T.view(-1)
+        action = action.T.view(-1).type(torch.int64)
+            
         q_value = self._behavior_net(state)
+        #print('q_value = ',q_value)
+        q_value = q_value[torch.arange(q_value.size(0)),action]
+
+        #print('action  = ',action)
+        #print('q_value = ',q_value)
         with torch.no_grad():
-            q_next = self._target_net(next_state)
+            q_next, _ = torch.max(self._target_net(next_state),1)
+            #print('q_next = ',q_next)
+            #print('gamma*q_next*(1-done) = ',q_next*(1-done))
             q_target = reward + gamma*q_next*(1-done)
+            #print('q_target = ',q_target)
         criterion = nn.MSELoss()
         loss = criterion(q_value, q_target)
         # optimize
@@ -131,16 +149,22 @@ def train(args, env, agent, writer):
     action_space = env.action_space
     total_steps, epsilon = 0, 1.
     ewma_reward = 0
+
+    # Learning rate scheduler
+    #lr_sch = torch.optim.lr_scheduler.ReduceLROnPlateau(agent._optimizer, mode='max', patience=20, factor=0.95, verbose=True)
+
     for episode in range(args.episode):
         total_reward = 0
         state = env.reset()
+        if total_steps >= args.warmup:
+            epsilon = max(epsilon * args.eps_decay, args.eps_min) # renew epsilon
+        
         for t in itertools.count(start=1):
             # select action
             if total_steps < args.warmup:
                 action = action_space.sample()
             else:
                 action = agent.select_action(state, epsilon, action_space) # epsilon-greedy updating
-                epsilon = max(epsilon * args.eps_decay, args.eps_min) # renew epsilon
             # execute action
             next_state, reward, done, _ = env.step(action)
             # store transition
@@ -153,6 +177,11 @@ def train(args, env, agent, writer):
             total_steps += 1
             if done:
                 ewma_reward = 0.05 * total_reward + (1 - 0.05) * ewma_reward
+                
+                #if total_steps >= args.warmup:
+                    # Tuning learning rate
+                    #lr_sch.step(ewma_reward)
+                
                 writer.add_scalar('Train/Episode Reward', total_reward,
                                   total_steps)
                 writer.add_scalar('Train/Ewma Reward', ewma_reward,
@@ -162,6 +191,7 @@ def train(args, env, agent, writer):
                     .format(total_steps, episode, t, total_reward, ewma_reward,
                             epsilon))
                 break
+
     env.close()
 
 
@@ -176,8 +206,7 @@ def test(args, env, agent, writer):
         env.seed(seed)
         state = env.reset()
         for t in itertools.count(start=1):
-            action = agent.select_action(state, epsilon, action_space) # epsilon-greedy updating
-            epsilon = max(epsilon * args.eps_decay, args.eps_min) # renew epsilon
+            action = agent.select_action(state, epsilon, action_space)
             # execute action
             next_state, reward, done, _ = env.step(action)
             # store transition
@@ -202,15 +231,15 @@ def main():
     parser.add_argument('-m', '--model', default='dqn.pth')
     parser.add_argument('--logdir', default='log/dqn')
     # train
-    parser.add_argument('--warmup', default=20000, type=int)
-    parser.add_argument('--episode', default=12000, type=int)
+    parser.add_argument('--warmup', default=10000, type=int)
+    parser.add_argument('--episode', default=1200, type=int)
     parser.add_argument('--capacity', default=10000, type=int)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--lr', default=.0005, type=float)
     parser.add_argument('--eps_decay', default=.995, type=float)
     parser.add_argument('--eps_min', default=.01, type=float)
     parser.add_argument('--gamma', default=.99, type=float)
-    parser.add_argument('--freq', default=10, type=int)
+    parser.add_argument('--freq', default=4, type=int)
     parser.add_argument('--target_freq', default=1000, type=int)
     # test
     parser.add_argument('--test_only', action='store_true')
